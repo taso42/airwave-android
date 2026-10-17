@@ -1,6 +1,6 @@
 # Airwave
 
-An Android dashboard for viewing live ResMed AirSense 11 breathing data. The app starts disconnected with empty charts; simulated data is available through an optional toggle on the Settings screen. The first Android Bluetooth implementation successfully paired and received live data on a physical phone, as reported by Taso on October 16, 2026.
+An Android dashboard for viewing live ResMed AirSense 11 breathing data. The app starts with empty charts and attempts to reconnect when saved pairing and Bluetooth permission are available; simulated data is available through an optional toggle on the Settings screen. The first Android Bluetooth implementation successfully paired and received live data on a physical phone, as reported by Taso on October 16, 2026.
 
 ## Current features
 
@@ -126,3 +126,9 @@ On a fresh app launch, Airwave attempts to reconnect to the saved AirSense when
 Bluetooth connect permission is already granted. Manual Disconnect remains in
 effect when switching apps or rotating; a fresh launch or Connect starts a new
 attempt. Frozen charts and cards have an amber outline and pause icon.
+
+## Project tracking
+
+- [TODO](TODO.md): remaining work by priority.
+- [Testing](docs/TESTING.md): repeatable checks and latest verification status.
+- [Development log](docs/DEVELOPMENT_LOG.md): archived investigation and implementation history.
