@@ -115,3 +115,14 @@ without scaling, separately from the instantaneous mask-pressure waveform. It
 matched the device’s steady 5.0 reading in the probe; exact screen equivalence
 across pressure changes remains P3 validation. It appears in the live-status indicator and stays live while charts are frozen.
 Unavailable/disconnected pressure is hidden; simulation also supplies this reading.
+
+Additional graphs can be enabled in Settings. All four default to enabled;
+choices persist across app restarts. All graphs share the selected time window. Tap any chart or reading
+card to freeze or resume all charts and cards together. The therapy-pressure
+status value remains live. Missing metric values break the line; long-window
+rendering preserves each metric’s extrema and unavailable-data boundaries.
+
+On a fresh app launch, Airwave attempts to reconnect to the saved AirSense when
+Bluetooth connect permission is already granted. Manual Disconnect remains in
+effect when switching apps or rotating; a fresh launch or Connect starts a new
+attempt. Frozen charts and cards have an amber outline and pause icon.

@@ -13,6 +13,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -22,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Modifier
@@ -34,6 +36,7 @@ import androidx.compose.ui.unit.sp
 private val Background = Color(0xFF0D1821)
 private val Panel = Color(0xFF172630)
 private val Mint = Color(0xFF68DCC1)
+private val FrozenAmber = Color(0xFFD8AD60)
 private val Blue = Color(0xFF83BDF5)
 
 class MainActivity : ComponentActivity() {
@@ -174,6 +177,18 @@ private fun Connections(model: AirwaveViewModel, onBack: () -> Unit) {
             }
         }
         Surface(color = Panel, shape = MaterialTheme.shapes.medium) {
+            Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                Text("Additional charts", style = MaterialTheme.typography.titleMedium)
+                model.additionalChartNames.forEach { name ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text(name, Modifier.weight(1f))
+                        Switch(checked = name in model.enabledCharts, onCheckedChange = { model.setChartEnabled(name, it) },
+                            modifier = Modifier.semantics { contentDescription = "$name chart" })
+                    }
+                }
+            }
+        }
+        Surface(color = Panel, shape = MaterialTheme.shapes.medium) {
             Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Simulated data")
@@ -218,6 +233,9 @@ private fun Dashboard(model: AirwaveViewModel, onConnections: () -> Unit) {
     val points = remember(model.chartRevision, model.window, model.frozen) { model.chartSnapshot() }
     val displayed = points.map { it.sample }
     val last = displayed.lastOrNull() ?: Sample(0f,0f,0f)
+    val toggleFrozen = { model.frozen = if (model.frozen == null) model.samples else null }
+    val tapLabel = if (model.frozen == null) "Freeze charts and readings" else "Resume charts and readings"
+    val extraCharts = model.enabledCharts
     Column(Modifier.fillMaxSize().background(Background).safeDrawingPadding()
         .verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
@@ -292,19 +310,19 @@ private fun Dashboard(model: AirwaveViewModel, onConnections: () -> Unit) {
                 }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Reading("Flow", if(displayed.isEmpty()) "—" else "%.1f".format(last.flow), "L/min", Mint, Modifier.weight(1f))
-            Reading("Mask pressure", if(displayed.isEmpty()) "—" else "%.1f".format(last.pressure), "cmH₂O", Blue, Modifier.weight(1f))
+            Reading("Flow", if(displayed.isEmpty()) "—" else "%.1f".format(last.flow), "L/min", Mint, Modifier.weight(1f).clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null)
+            Reading("Mask pressure", if(displayed.isEmpty()) "—" else "%.1f".format(last.pressure), "cmH₂O", Blue, Modifier.weight(1f).clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null)
         }
         val showMetrics = displayed.isNotEmpty() && (model.frozen != null || model.demo || live)
         fun metricText(value: Float?, decimals: Int = 1): String =
             if (!showMetrics || value == null) "—" else "%.${decimals}f".format(value)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Reading("Leak", metricText(last.leak), "L/min", Mint, Modifier.weight(1f))
-            Reading("Respiratory rate", metricText(last.respiratoryRate), "breaths/min", Blue, Modifier.weight(1f))
+            Reading("Leak", metricText(last.leak), "L/min", Mint, Modifier.weight(1f).clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null)
+            Reading("Respiratory rate", metricText(last.respiratoryRate), "breaths/min", Blue, Modifier.weight(1f).clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Reading("Tidal volume", metricText(last.tidalVolume, 0), "mL", Mint, Modifier.weight(1f))
-            Reading("Minute ventilation", metricText(last.minuteVentilation), "L/min", Blue, Modifier.weight(1f))
+            Reading("Tidal volume", metricText(last.tidalVolume, 0), "mL", Mint, Modifier.weight(1f).clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null)
+            Reading("Minute ventilation", metricText(last.minuteVentilation), "L/min", Blue, Modifier.weight(1f).clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null)
         }
         Column {
           Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -314,21 +332,23 @@ private fun Dashboard(model: AirwaveViewModel, onConnections: () -> Unit) {
             FilterChip(selected = model.window == 900, onClick = { model.window = 900 }, label = { Text("15 min") })
             FilterChip(selected = model.window == 3600, onClick = { model.window = 3600 }, label = { Text("60 min") })
           }
-            OutlinedButton(onClick = { model.frozen = if (model.frozen == null) model.samples.toList() else null }) {
-                Text(if (model.frozen == null) "Freeze view" else "Resume")
-            }
         }
-        if (model.frozen != null) Text("View frozen • Incoming sampling continues", color = Mint, style = MaterialTheme.typography.bodySmall)
-        WaveChart("Flow", "L/min", points, model.window, end, model.frozen != null, -40f, 40f, Mint) { it.flow }
-        WaveChart("Mask pressure", "cmH₂O", points, model.window, end, model.frozen != null, 4f, 12f, Blue) { it.pressure }
-        Text("Both charts share a time window. Flow above zero represents inhalation; below zero represents exhalation.", color = Color(0xFFA5B7C4), style = MaterialTheme.typography.bodySmall)
+        WaveChart("Flow", "L/min", points, model.window, end, model.frozen != null, -40f, 40f, Mint, toggleFrozen) { it.flow }
+        WaveChart("Mask pressure", "cmH₂O", points, model.window, end, model.frozen != null, 4f, 12f, Blue, toggleFrozen) { it.pressure }
+        if ("Leak" in extraCharts) WaveChart("Leak", "L/min", points, model.window, end, model.frozen != null, 0f, 30f, Mint, toggleFrozen) { it.leak }
+        if ("Respiratory rate" in extraCharts) WaveChart("Respiratory rate", "breaths/min", points, model.window, end, model.frozen != null, 0f, 30f, Blue, toggleFrozen) { it.respiratoryRate }
+        if ("Tidal volume" in extraCharts) WaveChart("Tidal volume", "mL", points, model.window, end, model.frozen != null, 0f, 1000f, Mint, toggleFrozen) { it.tidalVolume }
+        if ("Minute ventilation" in extraCharts) WaveChart("Minute ventilation", "L/min", points, model.window, end, model.frozen != null, 0f, 15f, Blue, toggleFrozen) { it.minuteVentilation }
     }
 }
 @Composable
-private fun Reading(label: String, value: String, unit: String, tint: Color, modifier: Modifier) {
-    Surface(modifier, color = Panel, shape = MaterialTheme.shapes.medium) {
+private fun Reading(label: String, value: String, unit: String, tint: Color, modifier: Modifier, frozen: Boolean) {
+    Surface(modifier, color = Panel, shape = MaterialTheme.shapes.medium, border = if (frozen) androidx.compose.foundation.BorderStroke(1.dp, FrozenAmber.copy(alpha = .6f)) else null) {
         Column(Modifier.padding(16.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
+                if (frozen) PauseMark()
+            }
             Text(value, color = tint, fontSize = 32.sp)
             Text(unit, style = MaterialTheme.typography.bodySmall)
         }
@@ -337,13 +357,16 @@ private fun Reading(label: String, value: String, unit: String, tint: Color, mod
 
 @Composable
 private fun WaveChart(title: String, unit: String, samples: List<ChartPoint>, window: Int, end: Float, frozen: Boolean,
-                      minimum: Float, maximum: Float, tint: Color, value: (Sample) -> Float) {
-    val values = samples.map { value(it.sample) }
+                      minimum: Float, maximum: Float, tint: Color, onTap: () -> Unit, value: (Sample) -> Float?) {
+    val values = samples.mapNotNull { value(it.sample) }
     val lower = minOf(minimum, kotlin.math.floor(values.minOrNull() ?: minimum))
     val upper = maxOf(maximum, kotlin.math.ceil(values.maxOrNull() ?: maximum))
-    Surface(color = Panel, shape = MaterialTheme.shapes.large) {
+    Surface(modifier = Modifier.clickable(onClickLabel = if (frozen) "Resume charts and readings" else "Freeze charts and readings", onClick = onTap), color = Panel, shape = MaterialTheme.shapes.large, border = if (frozen) androidx.compose.foundation.BorderStroke(1.dp, FrozenAmber.copy(alpha = .6f)) else null) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("$title · $unit", style = MaterialTheme.typography.titleMedium)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("$title · $unit", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                if (frozen) PauseMark()
+            }
             Text("${upper.toInt()}", color = Color.LightGray, fontSize = 11.sp)
             Canvas(Modifier.fillMaxWidth().height(140.dp).clipToBounds()) {
                 fun y(v: Float) = size.height * (1f - (v - lower) / (upper - lower))
@@ -356,8 +379,10 @@ private fun WaveChart(title: String, unit: String, samples: List<ChartPoint>, wi
                 var first = true
                 samples.forEach { point ->
                     val it = point.sample
+                    val reading = value(it)
+                    if (reading == null) { first = true; return@forEach }
                     val x = size.width * (it.seconds - (end - window)) / window
-                    if (first || point.startsSegment) { path.moveTo(x, y(value(it))); first = false } else path.lineTo(x, y(value(it)))
+                    if (first || point.startsSegment) { path.moveTo(x, y(reading)); first = false } else path.lineTo(x, y(reading))
                 }
                 drawPath(path, tint, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
             }
@@ -367,5 +392,14 @@ private fun WaveChart(title: String, unit: String, samples: List<ChartPoint>, wi
                 Text(if (frozen) "Frozen" else "Now", fontSize = 11.sp)
             }
         }
+    }
+}
+
+@Composable
+private fun PauseMark() {
+    Canvas(Modifier.padding(start = 8.dp).size(14.dp).semantics { contentDescription = "View frozen" }) {
+        val stroke = 3.dp.toPx()
+        drawLine(FrozenAmber, Offset(size.width * .3f, size.height * .15f), Offset(size.width * .3f, size.height * .85f), stroke)
+        drawLine(FrozenAmber, Offset(size.width * .7f, size.height * .15f), Offset(size.width * .7f, size.height * .85f), stroke)
     }
 }

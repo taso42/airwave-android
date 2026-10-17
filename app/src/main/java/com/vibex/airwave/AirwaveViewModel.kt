@@ -15,6 +15,15 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
     private val preferences = application.getSharedPreferences("settings", 0)
     var keepStreamingInBackground by mutableStateOf(preferences.getBoolean("backgroundStreaming", false))
         private set
+    val additionalChartNames = listOf("Leak", "Respiratory rate", "Tidal volume", "Minute ventilation")
+    var enabledCharts by mutableStateOf(preferences.getStringSet("enabledCharts", additionalChartNames.toSet())!!.toSet())
+        private set
+    fun setChartEnabled(name: String, enabled: Boolean) {
+        require(name in additionalChartNames)
+        enabledCharts = if (enabled) enabledCharts + name else enabledCharts - name
+        preferences.edit().putStringSet("enabledCharts", enabledCharts).apply()
+    }
+    private var initialConnectPending = true
     private var foreground = true
     private var resumeDevice: com.vibex.airwave.ble.Nearby? = null
     private var serviceRunning = false
@@ -113,6 +122,12 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
         val device = resumeDevice
         resumeDevice = null
         if (device != null && !demo) client.connect(device)
+        if (initialConnectPending) {
+            initialConnectPending = false
+            val permitted = android.os.Build.VERSION.SDK_INT < 31 ||
+                getApplication<Application>().checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (device == null && !demo && permitted && !client.connecting.value && !client.streaming.value) client.reconnectSaved()
+        }
         updateService(client.connecting.value || client.streaming.value)
     }
     fun disconnectStream() {

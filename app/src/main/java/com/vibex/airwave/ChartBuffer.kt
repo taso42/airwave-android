@@ -24,7 +24,11 @@ internal class ChartBuffer : AbstractList<Sample>() {
 
 internal data class ChartPoint(val sample: Sample, val startsSegment: Boolean)
 
-/** Preserve both channels' extrema and every outage boundary in each time bucket. */
+private val chartChannels: List<(Sample) -> Float?> = listOf(
+    { it.flow }, { it.pressure }, { it.leak }, { it.respiratoryRate },
+    { it.tidalVolume }, { it.minuteVentilation })
+
+/** Preserve channel extrema, null transitions, and outage boundaries. */
 internal fun chartPoints(source: List<Sample>, start: Float, end: Float, buckets: Int = 600): List<ChartPoint> {
     val result = ArrayList<ChartPoint>()
     var low = 0
@@ -38,18 +42,22 @@ internal fun chartPoints(source: List<Sample>, start: Float, end: Float, buckets
     while (i < source.size && source[i].seconds <= end) {
         val first = i
         val bucket = ((source[i].seconds - start) / (end - start) * buckets).toInt()
-        var flowMin = i; var flowMax = i; var pressureMin = i; var pressureMax = i
+        val minima = IntArray(chartChannels.size) { i }; val maxima = minima.copyOf()
         i++
         while (i < source.size && source[i].seconds <= end &&
             source[i].seconds - source[i - 1].seconds <= .12f &&
+            chartChannels.all { (it(source[i]) == null) == (it(source[i-1]) == null) } &&
             ((source[i].seconds - start) / (end - start) * buckets).toInt() == bucket) {
-            if (source[i].flow < source[flowMin].flow) flowMin = i
-            if (source[i].flow > source[flowMax].flow) flowMax = i
-            if (source[i].pressure < source[pressureMin].pressure) pressureMin = i
-            if (source[i].pressure > source[pressureMax].pressure) pressureMax = i
+            chartChannels.forEachIndexed { channel, value ->
+                val current = value(source[i])
+                if (current != null) {
+                    if (current < (value(source[minima[channel]]) ?: current)) minima[channel] = i
+                    if (current > (value(source[maxima[channel]]) ?: current)) maxima[channel] = i
+                }
+            }
             i++
         }
-        listOf(first, flowMin, flowMax, pressureMin, pressureMax, i - 1).distinct().sorted().forEachIndexed { n, index ->
+        (listOf(first, i - 1) + minima.toList() + maxima.toList()).distinct().sorted().forEachIndexed { n, index ->
             result.add(ChartPoint(source[index], newSegment && n == 0))
         }
         newSegment = i < source.size && source[i].seconds - source[i - 1].seconds > .12f

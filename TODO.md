@@ -248,3 +248,15 @@ Pairing diagnostics — added secret-free request IDs, response-lane/pending/dup
 Phone feedback — four additional metric displays look good; user also reports fresh pairing and saved-session reconnect succeeded before the diagnostic update. Intermittent pairing/session rejection remains unresolved.
 
 Therapy pressure layout — moved from its dedicated card into the Live/Simulated status line, with an accessibility label naming Therapy pressure. It follows the latest sample even while charts are frozen and is hidden when unavailable/disconnected. Phone layout and frozen-view acceptance remain to be checked.
+
+- [x] Add selectable leak, respiratory-rate, tidal-volume, and minute-ventilation graphs sharing the time window and frozen snapshot; preserve metric peaks and null gaps in long windows. All four additional graphs default to visible; Settings choices persist across app restarts.
+- [x] Replace the dedicated Freeze/Resume button with tapping any chart or reading card; provide accessibility action labels. Therapy pressure in live status continues updating.
+- [x] Phone-verify graphs and chart/card tap-to-freeze/resume — confirmed by Taso.
+- [ ] **P2** — Phone-verify metric gaps with real therapy and persisted chart settings after a fresh launch.
+
+Graph controls follow-up — user confirmed graphs and tap-to-freeze work. Moved additional-chart switches to Settings, defaulted all four on, and persisted choices across app restarts. Removed the tap instruction; frozen charts/cards now use an amber outline and pause icon.
+
+- [x] Indicate frozen charts/cards with a subtle amber outline and pause icon instead of a standalone label.
+- [x] Reconnect to the saved AirSense once on a fresh app launch when Bluetooth connect permission is granted; manual Disconnect is not undone by ordinary foregrounding or rotation.
+- [x] Phone-verify fresh-launch reconnect — confirmed by Taso on October 17, 2026.
+- [ ] **P2** — Phone-verify manual Disconnect followed by app switching and frozen outline/pause styling.

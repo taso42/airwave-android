@@ -4,6 +4,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ChartBufferTest {
+    @Test fun preservesMetricPeaksAndNullBoundariesInOneBucket() {
+        val raw = (0..99).map { i -> Sample(i*.04f, 0f, 5f,
+            leak=if(i in 40..50) null else if(i==70) 77f else 0f,
+            respiratoryRate=if(i==20) 33f else 12f,
+            tidalVolume=if(i==25) 900f else 500f,
+            minuteVentilation=if(i==30) 15f else 6f) }
+        val points=chartPoints(raw,0f,3600f,1)
+        assertEquals(77f,points.mapNotNull { it.sample.leak }.max(),0f)
+        assertEquals(33f,points.mapNotNull { it.sample.respiratoryRate }.max(),0f)
+        assertEquals(900f,points.mapNotNull { it.sample.tidalVolume }.max(),0f)
+        assertEquals(15f,points.mapNotNull { it.sample.minuteVentilation }.max(),0f)
+        for(i in listOf(39,40,50,51)) assertTrue(points.any { it.sample==raw[i] })
+        assertEquals(1,points.count { it.startsSegment })
+    }
     @Test fun retainsOnlyAnHourAndSnapshotsAreIndependent() {
         val buffer = ChartBuffer()
         repeat(100_000) { buffer.append(Sample(it * .04f, 0f, 0f)) }
