@@ -1,0 +1,20 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Kotlin caches and build outputs
+.kotlin/
+**/build/
+
+# Local recordings and signing credentials
+private/
+*.jks
+*.keystore
+keystore.properties
