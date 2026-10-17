@@ -32,7 +32,6 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlin.math.*
 
-private data class Sample(val seconds: Float, val flow: Float, val pressure: Float)
 private val Background = Color(0xFF0D1821)
 private val Panel = Color(0xFF172630)
 private val Mint = Color(0xFF68DCC1)
@@ -42,71 +41,50 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
-        setContent { MaterialTheme(colorScheme = darkColorScheme(background = Background, surface = Panel)) { Dashboard() } }
+        val model=androidx.lifecycle.ViewModelProvider(this)[AirwaveViewModel::class.java]
+        setContent { MaterialTheme(colorScheme = darkColorScheme(background = Background, surface = Panel)) { Dashboard(model) } }
     }
-}
-
-private fun simulatedSample(t: Float): Sample {
-    val breath = sin(t * 2f * PI.toFloat() / 4.8f)
-    return Sample(t, 26f * breath + 2f * sin(t * 5f), 8f + 1.5f * tanh(breath * 3f))
 }
 
 @Composable
-private fun Dashboard() {
-    var samples by remember { mutableStateOf((0..1500).map { simulatedSample(it * .04f) }) }
-    var frozen by remember { mutableStateOf<List<Sample>?>(null) }
-    var window by remember { mutableIntStateOf(30) }
-    var demo by remember { mutableStateOf(true) }
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var firstTimestamp by remember { mutableStateOf<Long?>(null) }
-    var lastPacket by remember { mutableLongStateOf(0L) }
-    var now by remember { mutableLongStateOf(0L) }
-    val client = remember {
-        AirSenseClient(context.applicationContext, scope) { batch ->
-            val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply { timeZone=TimeZone.getTimeZone("UTC") }
-            val timestamp = parser.parse(batch.timestamp)!!.time
-            if(firstTimestamp == null) firstTimestamp = timestamp
-            val base = (timestamp-firstTimestamp!!)/1000f
-            val incoming = batch.flow.indices.map { i -> Sample(base+i*batch.intervalMs/1000f, batch.flow[i]*60f, batch.pressure[i]) }
-            samples = (samples + incoming).takeLast(1501)
-            lastPacket = android.os.SystemClock.elapsedRealtime()
-        }
-    }
+private fun Dashboard(model: AirwaveViewModel) {
+    val client=model.client
     val status by client.status.collectAsState()
     val devices by client.devices.collectAsState()
     val needsCode by client.needsCode.collectAsState()
+    val saved by client.savedDevice.collectAsState()
+    var reconnectRequested by remember { mutableStateOf(false) }
     var code by remember { mutableStateOf("") }
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
-        if(granted.values.all { it }) client.scan() else client.status.value="Bluetooth permissions denied. Tap Scan to retry."
+        if(granted.values.all { it }) { if(reconnectRequested)client.reconnectSaved() else client.scan() } else client.status.value="Bluetooth permissions denied. Tap Scan to retry."
     }
-    DisposableEffect(client) { onDispose { client.disconnect() } }
-    LaunchedEffect(Unit) { while(true) { delay(500); now=android.os.SystemClock.elapsedRealtime() } }
-    LaunchedEffect(demo) {
-        while (demo) {
-            delay(40)
-            samples = (samples.takeLast(1500) + simulatedSample(samples.last().seconds + .04f))
-        }
-    }
-    val displayed = frozen ?: samples
+    val displayed = model.frozen ?: model.samples
     val last = displayed.lastOrNull() ?: Sample(0f,0f,0f)
     Column(Modifier.fillMaxSize().background(Background).safeDrawingPadding()
         .verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text("AIRWAVE", color = Mint, fontSize = 14.sp, letterSpacing = 3.sp)
         Surface(color = Panel, shape = MaterialTheme.shapes.medium) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(if(demo) "DEMO • Simulated data" else status, color = Mint)
-                Text(if(demo) "No CPAP connected. Illustrative waveforms at 25 samples/sec." else "Live only • Pairing lasts until disconnect", style = MaterialTheme.typography.bodySmall)
-                if(!demo && lastPacket > 0 && now-lastPacket > 2000) Text("No recent samples • Display is stale", color=Color(0xFFFFC980))
+                Text(if(model.demo) "DEMO • Simulated data" else status, color = Mint)
+                Text(if(model.demo) "No CPAP connected. Illustrative waveforms at 25 samples/sec." else "Live only • Pairing remembered securely", style = MaterialTheme.typography.bodySmall)
+                if(!model.demo && model.lastPacket > 0 && model.now-model.lastPacket > 2000) Text("No recent samples • Display is stale", color=Color(0xFFFFC980))
                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     Button(onClick={
-                        demo=false; samples=emptyList(); frozen=null; firstTimestamp=null;lastPacket=0
+                        model.demo=false; model.samples=emptyList(); model.frozen=null; model.firstTimestamp=null;model.lastPacket=0
+                        reconnectRequested=false
                         permissions.launch(if(Build.VERSION.SDK_INT >= 31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))
                     }) { Text("Scan") }
-                    OutlinedButton(onClick={ client.disconnect();demo=false }) { Text("Disconnect") }
+                    OutlinedButton(onClick={ client.disconnect();model.demo=false }) { Text("Disconnect") }
                 }
-                if(!demo && !needsCode) devices.forEach { device ->
-                    TextButton(onClick={ samples=emptyList();frozen=null;firstTimestamp=null;lastPacket=0;client.connect(device) }) { Text(device.name) }
+                if(!model.demo) Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    TextButton(enabled=saved!=null,onClick={
+                        model.demo=false;reconnectRequested=true
+                        permissions.launch(if(Build.VERSION.SDK_INT >= 31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))
+                    }) { Text("Reconnect") }
+                    TextButton(onClick={ client.forget();model.clearDisplay() }) { Text("Forget pairing") }
+                }
+                if(!model.demo && !needsCode) devices.forEach { device ->
+                    TextButton(onClick={ model.samples=emptyList();model.frozen=null;model.firstTimestamp=null;model.lastPacket=0;client.connect(device) }) { Text(device.name) }
                 }
                 if(needsCode) {
                     OutlinedTextField(value=code,onValueChange={ code=it.filter(Char::isDigit).take(4) },label={Text("AirSense code")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword),singleLine=true)
@@ -119,19 +97,18 @@ private fun Dashboard() {
             Reading("Mask pressure", if(displayed.isEmpty()) "—" else "%.1f".format(last.pressure), "cmH₂O", Blue, Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = window == 30, onClick = { window = 30 }, label = { Text("30 sec") })
-            FilterChip(selected = window == 60, onClick = { window = 60 }, label = { Text("60 sec") })
-            OutlinedButton(onClick = { frozen = if (frozen == null) samples.toList() else null }) {
-                Text(if (frozen == null) "Freeze view" else "Resume")
+            FilterChip(selected = model.window == 30, onClick = { model.window = 30 }, label = { Text("30 sec") })
+            FilterChip(selected = model.window == 60, onClick = { model.window = 60 }, label = { Text("60 sec") })
+            OutlinedButton(onClick = { model.frozen = if (model.frozen == null) model.samples.toList() else null }) {
+                Text(if (model.frozen == null) "Freeze view" else "Resume")
             }
         }
-        if (frozen != null) Text("View frozen • Incoming sampling continues", color = Mint, style = MaterialTheme.typography.bodySmall)
-        WaveChart("Flow", "L/min", displayed, window, -40f, 40f, Mint) { it.flow }
-        WaveChart("Mask pressure", "cmH₂O", displayed, window, 4f, 12f, Blue) { it.pressure }
+        if (model.frozen != null) Text("View frozen • Incoming sampling continues", color = Mint, style = MaterialTheme.typography.bodySmall)
+        WaveChart("Flow", "L/min", displayed, model.window, -40f, 40f, Mint) { it.flow }
+        WaveChart("Mask pressure", "cmH₂O", displayed, model.window, 4f, 12f, Blue) { it.pressure }
         Text("Both charts share a time window. Flow above zero represents inhalation; below zero represents exhalation.", color = Color(0xFFA5B7C4), style = MaterialTheme.typography.bodySmall)
     }
 }
-
 @Composable
 private fun Reading(label: String, value: String, unit: String, tint: Color, modifier: Modifier) {
     Surface(modifier, color = Panel, shape = MaterialTheme.shapes.medium) {

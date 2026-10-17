@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
  data class Nearby(val address: String, val name: String)
  data class LiveReading(val timestamp: String, val intervalMs: Int, val flow: List<Float>, val pressure: List<Float>)
@@ -20,6 +22,25 @@ class AirSenseClient(private val context: Context, private val scope: CoroutineS
     val devices = MutableStateFlow<List<Nearby>>(emptyList())
     val needsCode = MutableStateFlow(false)
     val streaming = MutableStateFlow(false)
+    private val store=PairingStore(context)
+    val savedDevice=MutableStateFlow<Nearby?>(null)
+    private var saved: SavedPairing? = null
+    private var selected: Nearby? = null
+    private var wanted=false
+    private var attempts=0
+    private var retryJob: Job? = null
+    private var watchdog: Job? = null
+    private var lastReceived=0L
+    init {
+        try { saved=store.load();savedDevice.value=saved?.device }
+        catch(_:Exception) { status.value="Saved pairing unavailable. Forget pairing and pair again." }
+    }
+    fun reconnectSaved() { savedDevice.value?.let { connect(it) } }
+    fun forget() {
+        disconnect();store.clear();saved=null;savedDevice.value=null
+        status.value="Pairing forgotten on this phone"
+    }
+    private class RpcRejected(message:String): Exception(message)
     private val adapter get() = context.getSystemService(BluetoothManager::class.java).adapter
     private var gatt: BluetoothGatt? = null
     private var tx: BluetoothGattCharacteristic? = null
@@ -55,12 +76,28 @@ class AirSenseClient(private val context: Context, private val scope: CoroutineS
     }
     private fun stopScan() { scanJob?.cancel(); scanJob=null; runCatching { adapter?.bluetoothLeScanner?.stopScan(scanCallback) } }
     fun connect(device: Nearby) {
-        disconnect(); status.value="Connecting to ${device.name}…"
+        disconnect(); selected=device;wanted=true;attempts=0
+        startConnection(device)
+    }
+    private fun startConnection(device:Nearby) {
+        closeLink();status.value="Connecting to ${device.name}…"
         ready=CompletableDeferred(); decoder=FigProtocol.Decoder();writeAck=Channel(Channel.UNLIMITED)
         work=scope.launch {
             try {
                 gatt=adapter.getRemoteDevice(device.address).connectGatt(context,false,callback,BluetoothDevice.TRANSPORT_LE)
                 withTimeout(20000) { ready.await() }
+                val remembered=saved?.takeIf { it.device.address==device.address }
+                if(remembered!=null) {
+                    status.value="Restoring paired session…"
+                    val challenge=rpc("RequestSession",JSONObject().put("clientId",remembered.clientId),false)
+                    val mac=Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(remembered.master,"HmacSHA256")) }
+                    val proof=mac.doFinal(FigProtocol.bytes(challenge.getString("challenge")))
+                    val confirmation=rpc("CheckSessionIntegrity",JSONObject().put("response",FigProtocol.hex(proof)),false)
+                    check(!confirmation.has("confirmation") || confirmation.optBoolean("confirmation")) { "Session proof rejected" }
+                    session=FigProtocol.hash(remembered.master,FigProtocol.bytes(challenge.getString("nonce")))
+                    startStream()
+                    return@launch
+                }
                 status.value="Requesting pairing code…"
                 pairing=FigProtocol.Pairing()
                 exchange=rpc("StartKeyExchange",JSONObject().put("clientPk",pairing!!.publicHex),false)
@@ -78,25 +115,54 @@ class AirSenseClient(private val context: Context, private val scope: CoroutineS
                 val proof=p.proof(e.getString("serverPk"),e.getString("salt"),code)
                 val result=rpc("ConfirmKeyExchange",JSONObject().put("clientConfirmation",proof),false)
                 session=p.finish(result.getString("serverConfirmation"),result.getString("nonce"))
+                val credential=SavedPairing(selected!!,result.getString("clientId"),p.master.copyOf())
+                store.save(credential);saved=credential;savedDevice.value=credential.device
                 pairing=null;exchange=null
-                rpc("GetVersion",null,true)
-                val accepted=rpc("StartStream",JSONObject().put("dataIds",JSONArray(listOf("_RFL","_MKP"))).put("sampleIntervalMs",40).put("reportIntervalMs",200),true)
-                val ids=accepted.getJSONArray("dataIds")
-                check(ids.length()==2 && (0 until ids.length()).all { ids.getJSONObject(it).optBoolean("valid") }) { "Device rejected stream channels" }
-                streaming.value=true;status.value="Connected • Waiting for live samples"
+                startStream()
             } catch(e:Exception) { fail(e) }
         }
     }
+    private suspend fun startStream() {
+        rpc("GetVersion",null,true)
+        val accepted=rpc("StartStream",JSONObject().put("dataIds",JSONArray(listOf("_RFL","_MKP"))).put("sampleIntervalMs",40).put("reportIntervalMs",200),true)
+        val ids=accepted.getJSONArray("dataIds")
+        check(ids.length()==2 && (0 until ids.length()).all { ids.getJSONObject(it).optBoolean("valid") }) { "Device rejected stream channels" }
+        streaming.value=true;status.value="Connected • Waiting for live samples"
+        lastReceived=android.os.SystemClock.elapsedRealtime()
+        watchdog=scope.launch {
+            while(isActive) {
+                delay(2000)
+                if(android.os.SystemClock.elapsedRealtime()-lastReceived>10000) {
+                    fail(IllegalStateException("Live stream stalled"));break
+                }
+            }
+        }
+    }
     private fun fail(e:Exception) {
-        if(e is CancellationException)return
+        if(e is CancellationException && e !is TimeoutCancellationException)return
+        closeLink()
         val message=e.message ?: e.javaClass.simpleName
-        disconnect();status.value="Connection failed: $message"
+        if(wanted && saved?.device?.address==selected?.address && e !is RpcRejected && attempts<5) {
+            val delayMs=1000L shl attempts++
+            status.value="Reconnecting ($attempts/5) • $message"
+            retryJob?.cancel()
+            retryJob=scope.launch { delay(delayMs);if(wanted)selected?.let { startConnection(it) } }
+        } else {
+            wanted=false
+            status.value=if(e is RpcRejected) "Session rejected: $message. Forget pairing to pair again." else "Connection stopped: $message. Tap Reconnect or Scan."
+        }
     }
     fun disconnect() {
-        stopScan(); work?.cancel();work=null
+        wanted=false;retryJob?.cancel();retryJob=null;stopScan();closeLink()
+        status.value="Disconnected"
+    }
+    private fun closeLink() {
+        work?.cancel();work=null;watchdog?.cancel();watchdog=null
         replies.values.forEach { it.cancel() };replies.clear()
-        gatt?.disconnect();gatt?.close();gatt=null;tx=null;session=null;pairing=null;exchange=null
-        streaming.value=false;needsCode.value=false;status.value="Disconnected"
+        val old=gatt;gatt=null
+        runCatching { old?.disconnect() };runCatching { old?.close() }
+        tx=null;session=null;pairing=null;exchange=null
+        streaming.value=false;needsCode.value=false
     }
     private suspend fun rpc(method:String, params:JSONObject?, encrypted:Boolean):JSONObject {
         val id=++nextId;val pending=CompletableDeferred<JSONObject>();replies[id]=pending
@@ -115,8 +181,10 @@ class AirSenseClient(private val context: Context, private val scope: CoroutineS
                 check(withTimeout(5000) { writeAck.receive() }==BluetoothGatt.GATT_SUCCESS) { "Bluetooth write failed" }
             }
             val response=withTimeout(15000) { pending.await() }
-            if(response.has("error")) error(response.getJSONObject("error").optString("message","RPC rejected"))
-            return response.getJSONObject("result")
+            if(response.has("error")) throw RpcRejected(response.getJSONObject("error").optString("message","RPC rejected"))
+            val result=response.get("result")
+            check(result != false) { "RPC rejected operation" }
+            return result as? JSONObject ?: JSONObject().put("value",result)
         } finally { replies.remove(id) }
     }
     private fun received(bytes:ByteArray) {
@@ -136,6 +204,8 @@ class AirSenseClient(private val context: Context, private val scope: CoroutineS
                         if(item.has("MaskPressure"))pressure=values("MaskPressure")
                     }
                     check(flow.size==pressure.size && flow.isNotEmpty()) { "Incomplete live sample batch" }
+                    lastReceived=android.os.SystemClock.elapsedRealtime()
+                    attempts=0
                     onSamples(LiveReading(p.getString("startTime"),p.getInt("intervalMs"),flow,pressure))
                     status.value="Live • ${1000/p.getInt("intervalMs")} Hz"
                 }
