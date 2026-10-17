@@ -65,3 +65,9 @@ Acceptance: the app accurately communicates whether the live stream is active or
 ## Bluetooth implementation progress
 
 First-pass scan, connect, in-memory pairing, encrypted RPC, and live subscription code is implemented and compiles. Protocol unit tests pass. Taso reported successful physical-phone pairing and live data reception on October 16, 2026. Initial end-to-end connectivity is demonstrated; repeated connection cycles, sustained streaming, waveform accuracy, and lifecycle acceptance checks remain open. Encrypted persisted pairing, saved-session authentication, bounded reconnect retries, and activity-scoped connection/buffer state are now implemented. Emulator recreation/storage tests pass; Taso confirmed remembered pairing, reconnect, and rotation on the phone on October 16, 2026. Radio-interruption recovery and cold-process restart remain unconfirmed. No recording has been added.
+
+## Connection screen
+
+Bluetooth management and the simulated-data toggle now live on a separate Connections screen. Simulation defaults off; the clickable dashboard status opens Connections and shows live, simulated, or disconnected state alongside the charts. Verify navigation and source switching on the phone.
+
+Connection controls now follow transport state, with automatic first-device discovery and secondary Find another device / Forget device actions. Verify the revised discovery and pairing flow on the phone.

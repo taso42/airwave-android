@@ -5,13 +5,10 @@ import android.os.Build
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
-import com.vibex.airwave.ble.AirSenseClient
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.TimeZone
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -29,8 +26,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
-import kotlin.math.*
 
 private val Background = Color(0xFF0D1821)
 private val Panel = Color(0xFF172630)
@@ -42,53 +37,152 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         val model=androidx.lifecycle.ViewModelProvider(this)[AirwaveViewModel::class.java]
-        setContent { MaterialTheme(colorScheme = darkColorScheme(background = Background, surface = Panel)) { Dashboard(model) } }
+        setContent { MaterialTheme(colorScheme = darkColorScheme(background = Background, surface = Panel)) { AirwaveApp(model) } }
     }
 }
 
 @Composable
-private fun Dashboard(model: AirwaveViewModel) {
+private fun AirwaveApp(model: AirwaveViewModel) {
+    var connections by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = connections) { connections = false }
+    if (connections) Connections(model, onBack = { connections = false })
+    else Dashboard(model, onConnections = { connections = true })
+}
+
+@Composable
+private fun Connections(model: AirwaveViewModel, onBack: () -> Unit) {
     val client=model.client
     val status by client.status.collectAsState()
     val devices by client.devices.collectAsState()
     val needsCode by client.needsCode.collectAsState()
     val saved by client.savedDevice.collectAsState()
-    var reconnectRequested by remember { mutableStateOf(false) }
+    val connecting by client.connecting.collectAsState()
+    val streaming by client.streaming.collectAsState()
+    val scanning by client.scanning.collectAsState()
+    val active by client.activeDevice.collectAsState()
+    var finding by rememberSaveable { mutableStateOf(false) }
+    var entered by rememberSaveable { mutableStateOf(false) }
+    var reconnectRequested by rememberSaveable { mutableStateOf(false) }
     var code by remember { mutableStateOf("") }
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
-        if(granted.values.all { it }) { if(reconnectRequested)client.reconnectSaved() else client.scan() } else client.status.value="Bluetooth permissions denied. Tap Scan to retry."
+        if(granted.values.all { it }) { if(reconnectRequested)client.reconnectSaved() else client.scan() } else client.status.value="Bluetooth permissions denied. Try again to grant access."
     }
+    fun requestBluetooth(reconnect: Boolean) {
+        model.useSimulation(false)
+        reconnectRequested = reconnect
+        finding = !reconnect
+        permissions.launch(if(Build.VERSION.SDK_INT >= 31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))
+    }
+    LaunchedEffect(Unit) {
+        if (!entered) {
+            entered = true
+            if (saved == null && !model.demo && !connecting && !streaming && !scanning) requestBluetooth(false)
+        }
+    }
+    Column(Modifier.fillMaxSize().background(Background).safeDrawingPadding()
+        .verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)) {
+            Canvas(Modifier.size(20.dp)) {
+                val stroke = 2.dp.toPx()
+                drawLine(Blue, Offset(size.width * .85f, size.height * .5f), Offset(size.width * .15f, size.height * .5f), stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(Blue, Offset(size.width * .15f, size.height * .5f), Offset(size.width * .45f, size.height * .2f), stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(Blue, Offset(size.width * .15f, size.height * .5f), Offset(size.width * .45f, size.height * .8f), stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+            Spacer(Modifier.width(8.dp))
+            Text("Back to charts", color = Blue)
+        }
+        Text("Connections", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium)
+        Surface(color = Panel, shape = MaterialTheme.shapes.medium) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(if (connecting || streaming) active?.name ?: "AirSense" else saved?.name ?: "Find your AirSense",
+                    style = MaterialTheme.typography.titleMedium)
+                Text(status, color = Mint)
+                when {
+                    needsCode -> {
+                        OutlinedTextField(value=code,onValueChange={ code=it.filter(Char::isDigit).take(4) },label={Text("AirSense code")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword),singleLine=true)
+                        Button(enabled=code.length==4,onClick={ client.pair(code);code="" }) { Text("Pair and connect") }
+                        TextButton(onClick={ client.disconnect() }) { Text("Cancel") }
+                    }
+                    connecting -> {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        TextButton(onClick={ client.disconnect() }) { Text("Cancel") }
+                    }
+                    streaming -> {
+                        Button(onClick={ client.disconnect();model.clearDisplay() }) { Text("Disconnect") }
+                    }
+                    scanning || finding || saved == null -> {
+                        if (scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
+                        if (devices.isNotEmpty()) Text("Nearby devices · Select to connect", style = MaterialTheme.typography.labelLarge)
+                        devices.forEach { device ->
+                            Surface(
+                                onClick = { finding=false;model.useSimulation(false);client.connect(device) },
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                color = Color(0xFF263E4C),
+                                contentColor = Color.White,
+                                shape = MaterialTheme.shapes.medium,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Blue.copy(alpha = .55f))
+                            ) {
+                                Row(Modifier.padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("ResMed device", style = MaterialTheme.typography.titleMedium)
+                                        Text(device.name, color = Color(0xFFCAD9E3), style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                    Text("Connect ›", color = Blue, style = MaterialTheme.typography.labelLarge)
+                                }
+                            }
+                        }
+                        if (scanning) TextButton(onClick={ client.disconnect();finding=false }) { Text("Cancel") }
+                        else Button(onClick={ requestBluetooth(false) }) { Text("Search again") }
+                        if (saved != null && !scanning) TextButton(onClick={ finding=false }) { Text("Back to saved device") }
+                    }
+                    else -> Button(onClick={ requestBluetooth(true) }) { Text("Connect") }
+                }
+                if (saved != null && !connecting && !streaming && !scanning && !finding) {
+                    TextButton(onClick={ requestBluetooth(false) }) { Text("Find another device") }
+                    TextButton(onClick={ client.forget();model.clearDisplay();requestBluetooth(false) }) { Text("Forget device") }
+                }
+            }
+        }
+        Surface(color = Panel, shape = MaterialTheme.shapes.medium) {
+            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Simulated data")
+                Switch(checked = model.demo, onCheckedChange = { model.useSimulation(it) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun Dashboard(model: AirwaveViewModel, onConnections: () -> Unit) {
+    val streaming by model.client.streaming.collectAsState()
+    val live = streaming && model.lastPacket > 0 && model.now - model.lastPacket <= 2000
     val displayed = model.frozen ?: model.samples
     val last = displayed.lastOrNull() ?: Sample(0f,0f,0f)
     Column(Modifier.fillMaxSize().background(Background).safeDrawingPadding()
         .verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text("AIRWAVE", color = Mint, fontSize = 14.sp, letterSpacing = 3.sp)
-        Surface(color = Panel, shape = MaterialTheme.shapes.medium) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(if(model.demo) "DEMO • Simulated data" else status, color = Mint)
-                Text(if(model.demo) "No CPAP connected. Illustrative waveforms at 25 samples/sec." else "Live only • Pairing remembered securely", style = MaterialTheme.typography.bodySmall)
-                if(!model.demo && model.lastPacket > 0 && model.now-model.lastPacket > 2000) Text("No recent samples • Display is stale", color=Color(0xFFFFC980))
-                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Button(onClick={
-                        model.demo=false; model.samples=emptyList(); model.frozen=null; model.firstTimestamp=null;model.lastPacket=0
-                        reconnectRequested=false
-                        permissions.launch(if(Build.VERSION.SDK_INT >= 31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))
-                    }) { Text("Scan") }
-                    OutlinedButton(onClick={ client.disconnect();model.demo=false }) { Text("Disconnect") }
-                }
-                if(!model.demo) Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    TextButton(enabled=saved!=null,onClick={
-                        model.demo=false;reconnectRequested=true
-                        permissions.launch(if(Build.VERSION.SDK_INT >= 31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))
-                    }) { Text("Reconnect") }
-                    TextButton(onClick={ client.forget();model.clearDisplay() }) { Text("Forget pairing") }
-                }
-                if(!model.demo && !needsCode) devices.forEach { device ->
-                    TextButton(onClick={ model.samples=emptyList();model.frozen=null;model.firstTimestamp=null;model.lastPacket=0;client.connect(device) }) { Text(device.name) }
-                }
-                if(needsCode) {
-                    OutlinedTextField(value=code,onValueChange={ code=it.filter(Char::isDigit).take(4) },label={Text("AirSense code")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword),singleLine=true)
-                    Button(enabled=code.length==4,onClick={ client.pair(code);code="" }) { Text("Pair and stream") }
+        val statusColor = if (model.demo || live) Mint else Color(0xFFFF6B6B)
+        Surface(
+            onClick = onConnections,
+            color = Panel,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+            border = androidx.compose.foundation.BorderStroke(1.dp, statusColor.copy(alpha = .3f))
+        ) {
+            Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 16.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Canvas(Modifier.size(8.dp)) { drawCircle(statusColor) }
+                Text(when {
+                    model.demo -> "Simulated - 25Hz"
+                    live -> "Live - ${model.sampleRateHz}Hz"
+                    else -> "Disconnected"
+                }, color = statusColor, style = MaterialTheme.typography.labelLarge)
+                Canvas(Modifier.size(16.dp)) {
+                    val stroke = 2.dp.toPx()
+                    drawLine(statusColor, Offset(size.width * .35f, size.height * .2f), Offset(size.width * .65f, size.height * .5f), stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                    drawLine(statusColor, Offset(size.width * .65f, size.height * .5f), Offset(size.width * .35f, size.height * .8f), stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
                 }
             }
         }

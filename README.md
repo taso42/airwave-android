@@ -1,15 +1,16 @@
 # Airwave
 
-An Android dashboard for viewing live ResMed AirSense 11 breathing data. The current app is an emulator-ready UI prototype using simulated samples. The first Android Bluetooth implementation successfully paired and received live data on a physical phone, as reported by Taso on October 16, 2026.
+An Android dashboard for viewing live ResMed AirSense 11 breathing data. The app starts disconnected with empty charts; simulated data is available through an optional toggle on the Connections screen. The first Android Bluetooth implementation successfully paired and received live data on a physical phone, as reported by Taso on October 16, 2026.
 
 ## Current features
 
 - Scrolling flow and mask-pressure charts with a shared 30- or 60-second window.
 - Current displayed readings in L/min and cmH₂O.
 - Freeze/resume view; demo sampling continues while the view and readings are frozen.
-- Explicit demo labeling and a dark, scrollable layout.
+- Separate Connections screen for Bluetooth controls and an off-by-default simulated-data toggle.
+- Clickable dashboard status opens Connections: Live with the sample rate, Simulated - 25Hz, or Disconnected in red.
 
-The demo starts with one minute of synthetic history and advances its simulated clock by 40 ms per update. This is a nominal 25 Hz source, not a validated realtime scheduler. Connection and display state live in an activity-scoped ViewModel and survive configuration recreation, including rotation. Process death still clears the in-memory chart buffer. Chart scales are fixed. The Bluetooth path supports service-filtered discovery, GATT connection, displayed-code SRP pairing, encrypted RPC, and flow/pressure subscriptions. Samples are held only in memory for the live display.
+When enabled, the demo starts with one minute of synthetic history and advances its simulated clock by 40 ms per update. This is a nominal 25 Hz source, not a validated realtime scheduler. Connection and display state live in an activity-scoped ViewModel and survive configuration recreation, including rotation. Process death still clears the in-memory chart buffer. Chart scales are fixed. The Bluetooth path supports service-filtered discovery, GATT connection, displayed-code SRP pairing, encrypted RPC, and flow/pressure subscriptions. Samples are held only in memory for the live display.
 
 ## Run
 
@@ -30,7 +31,7 @@ The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Structure
 
-- `app/src/main/java/com/vibex/airwave/MainActivity.kt`: current dashboard, simulation, and chart rendering.
+- `app/src/main/java/com/vibex/airwave/MainActivity.kt`: dashboard, Connections screen, and chart rendering.
 - `app/src/main/java/com/vibex/airwave/ui/theme/`: generated starter theme files; the dashboard currently defines its own palette.
 - `app/src/test/` and `app/src/androidTest/`: starter tests; dashboard-specific tests are still proposed.
 - `gradle/libs.versions.toml`: dependency versions.
@@ -57,13 +58,13 @@ The first Bluetooth milestone is pairing on Android and displaying received samp
 ## Bluetooth phone test
 
 1. Enable Bluetooth and bring the phone near the powered AirSense 11. Stop the Mac streaming client first.
-2. Tap **Scan** and grant the requested Bluetooth permissions (location on older Android versions).
+2. Tap the dashboard status to open **Connections**, then grant the requested Bluetooth permissions (location on older Android versions).
 3. Select the discovered ResMed device.
 4. On the AirSense, open **Home → More → myAir**, then enter the displayed four-digit code in Airwave.
-5. Tap **Pair and stream**. Successful authentication starts flow and mask-pressure streaming at a requested 40 ms interval.
+5. Tap **Pair and connect**. Successful authentication starts flow and mask-pressure streaming at a requested 40 ms interval.
 6. Tap **Disconnect** to close the GATT connection.
 
-Pairing credentials for one device are encrypted with an Android Keystore AES-GCM key and stored in the app’s no-backup directory. Reconnect uses the saved client ID and master key to authenticate a fresh session; no pairing code is needed unless the machine rejects the saved credentials. Use Forget pairing to remove the phone’s saved credentials. Link failures and a ten-second stream stall trigger up to five reconnect attempts with increasing delays (1, 2, 4, 8, 16 seconds). Explicit Disconnect cancels retries. A cold app launch offers Reconnect rather than silently connecting. Rotation preserves the client and buffer. This is not a foreground service: uninterrupted streaming while Android suspends or kills the app is not guaranteed; saved pairing supports reconnection afterward. Device timestamps pace chart positions; the UI marks data stale after two seconds without packets. Flow is converted from the expected L/s protocol value to L/min; validate this with therapy data before treating the display as calibrated. No breathing data is recorded.
+Pairing credentials for one device are encrypted with an Android Keystore AES-GCM key and stored in the app’s no-backup directory. Reconnect uses the saved client ID and master key to authenticate a fresh session; no pairing code is needed unless the machine rejects the saved credentials. Use Forget device to remove the phone’s saved credentials. Link failures and a ten-second stream stall trigger up to five reconnect attempts with increasing delays (1, 2, 4, 8, 16 seconds). Explicit Disconnect cancels retries. A cold app launch offers Connect rather than silently connecting. Rotation preserves the client and buffer. This is not a foreground service: uninterrupted streaming while Android suspends or kills the app is not guaranteed; saved pairing supports reconnection afterward. Device timestamps pace chart positions; the dashboard shows Disconnected after two seconds without packets; connection details remain on the Connections screen. Flow is converted from the expected L/s protocol value to L/min; validate this with therapy data before treating the display as calibrated. No breathing data is recorded.
 
 Validation: debug build and JVM unit tests pass, including Python-reference SRP/framing vectors, AES round-trip, corrupted-frame rejection, and server-proof rejection. Taso reported successful pairing and live data reception on the connected physical phone on October 16, 2026. This validates the initial end-to-end connection; sustained therapy waveform accuracy and radio-interruption recovery remain to be tested.
 
@@ -71,4 +72,8 @@ Validation: debug build and JVM unit tests pass, including Python-reference SRP/
 
 The updated debug build and JVM protocol tests pass. Two emulator instrumentation tests pass: activity recreation retains the same ViewModel/client, buffer, frozen view, and selected window; encrypted pairing survives storage recreation and can be deleted. These tests do not prove a live BLE connection survives radio interruption.
 
-Phone acceptance sequence: pair once with this build; Disconnect → Reconnect without a code; rotate while streaming; briefly interrupt Bluetooth then restore it and check recovery; relaunch the app and use Reconnect. Longer interruptions may exhaust retries and require tapping Reconnect. Taso confirmed on October 16, 2026 that pairing is remembered, reconnect works, and rotation works on the phone. Radio-interruption recovery and cold-process restart remain separate checks; they were not explicitly confirmed.
+Phone acceptance sequence: pair once with this build; Disconnect → Connect without a code; rotate while streaming; briefly interrupt Bluetooth then restore it and check recovery; relaunch the app and use Connect. Longer interruptions may exhaust retries and require tapping Connect. Taso confirmed on October 16, 2026 that pairing is remembered, reconnect works, and rotation works on the phone. Radio-interruption recovery and cold-process restart remain separate checks; they were not explicitly confirmed.
+
+Simulation is opt-in on each cold app launch. Switching sources clears the chart buffer and frozen view; enabling simulation disconnects Bluetooth. The dashboard status shows Simulated - 25Hz while simulation is enabled.
+
+Connections searches automatically on first entry when no device is saved (unless simulation is active). Saved devices offer Connect; connecting offers Cancel; connected devices offer Disconnect. Find another device opens discovery, with Search again after a search completes. Forget device removes saved pairing and starts discovery.

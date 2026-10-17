@@ -13,14 +13,17 @@ import kotlin.math.*
 internal data class Sample(val seconds: Float, val flow: Float, val pressure: Float)
 internal class AirwaveViewModel(application: Application): AndroidViewModel(application) {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
-    var samples by mutableStateOf((0..1500).map { simulated(it*.04f) })
+    var samples by mutableStateOf<List<Sample>>(emptyList())
     var frozen by mutableStateOf<List<Sample>?>(null)
     var window by mutableIntStateOf(30)
-    var demo by mutableStateOf(true)
+    var demo by mutableStateOf(false)
+    var sampleRateHz by mutableIntStateOf(25)
     var firstTimestamp:Long?=null
     var lastPacket by mutableLongStateOf(0L)
     var now by mutableLongStateOf(0L)
     val client=AirSenseClient(application,scope) { batch ->
+        if (demo) return@AirSenseClient
+        sampleRateHz = if (batch.intervalMs > 0) 1000 / batch.intervalMs else 25
         val parser=SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",Locale.US).apply { timeZone=TimeZone.getTimeZone("UTC") }
         val timestamp=parser.parse(batch.timestamp)!!.time
         if(firstTimestamp==null)firstTimestamp=timestamp
@@ -32,12 +35,17 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
         lastPacket=android.os.SystemClock.elapsedRealtime()
     }
     init {
-        if(client.savedDevice.value!=null) { demo=false;samples=emptyList() }
         scope.launch { while(isActive) {
             delay(40)
             now=android.os.SystemClock.elapsedRealtime()
             if(demo)samples=samples.takeLast(1500)+simulated((samples.lastOrNull()?.seconds ?: 0f)+.04f)
         } }
+    }
+    fun useSimulation(enabled: Boolean) {
+        client.disconnect()
+        clearDisplay()
+        demo = enabled
+        if (enabled) samples = (0..1500).map { simulated(it * .04f) }
     }
     fun clearDisplay() { demo=false;samples=emptyList();frozen=null;firstTimestamp=null;lastPacket=0 }
     override fun onCleared() { client.disconnect();scope.cancel() }

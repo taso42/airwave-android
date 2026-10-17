@@ -21,6 +21,9 @@ class AirSenseClient(private val context: Context, private val scope: CoroutineS
     val status = MutableStateFlow("Not connected")
     val devices = MutableStateFlow<List<Nearby>>(emptyList())
     val needsCode = MutableStateFlow(false)
+    val connecting = MutableStateFlow(false)
+    val scanning = MutableStateFlow(false)
+    val activeDevice = MutableStateFlow<Nearby?>(null)
     val streaming = MutableStateFlow(false)
     private val store=PairingStore(context)
     val savedDevice=MutableStateFlow<Nearby?>(null)
@@ -63,24 +66,24 @@ class AirSenseClient(private val context: Context, private val scope: CoroutineS
             val d=Nearby(result.device.address,result.scanRecord?.deviceName ?: "ResMed")
             devices.value=(devices.value.filterNot { it.address==d.address }+d)
         } }
-        override fun onScanFailed(errorCode: Int) { status.value="Scan failed ($errorCode)" }
+        override fun onScanFailed(errorCode: Int) { stopScan();status.value="Search failed ($errorCode)" }
     }
     fun scan() {
         disconnect()
         try {
             check(adapter?.isEnabled == true) { "Enable Bluetooth on your phone" }
-            devices.value=emptyList(); status.value="Scanning for ResMed…"
+            devices.value=emptyList(); scanning.value=true; status.value="Searching for nearby devices…"
             (adapter.bluetoothLeScanner ?: error("Bluetooth scanner unavailable")).startScan(listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(service)).build()),ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(),scanCallback)
             scanJob=scope.launch { delay(10000); stopScan(); status.value=if(devices.value.isEmpty()) "No ResMed found. Move closer and try again." else "Select your AirSense" }
-        } catch(e:Exception) { status.value=e.message ?: "Scan failed" }
+        } catch(e:Exception) { stopScan();status.value=e.message ?: "Search failed" }
     }
-    private fun stopScan() { scanJob?.cancel(); scanJob=null; runCatching { adapter?.bluetoothLeScanner?.stopScan(scanCallback) } }
+    private fun stopScan() { scanning.value=false; scanJob?.cancel(); scanJob=null; runCatching { adapter?.bluetoothLeScanner?.stopScan(scanCallback) } }
     fun connect(device: Nearby) {
         disconnect(); selected=device;wanted=true;attempts=0
         startConnection(device)
     }
     private fun startConnection(device:Nearby) {
-        closeLink();status.value="Connecting to ${device.name}…"
+        closeLink();connecting.value=true;activeDevice.value=device;status.value="Connecting to ${device.name}…"
         ready=CompletableDeferred(); decoder=FigProtocol.Decoder();writeAck=Channel(Channel.UNLIMITED)
         work=scope.launch {
             try {
@@ -127,7 +130,7 @@ class AirSenseClient(private val context: Context, private val scope: CoroutineS
         val accepted=rpc("StartStream",JSONObject().put("dataIds",JSONArray(listOf("_RFL","_MKP"))).put("sampleIntervalMs",40).put("reportIntervalMs",200),true)
         val ids=accepted.getJSONArray("dataIds")
         check(ids.length()==2 && (0 until ids.length()).all { ids.getJSONObject(it).optBoolean("valid") }) { "Device rejected stream channels" }
-        streaming.value=true;status.value="Connected • Waiting for live samples"
+        connecting.value=false;streaming.value=true;status.value="Connected • Waiting for live samples"
         lastReceived=android.os.SystemClock.elapsedRealtime()
         watchdog=scope.launch {
             while(isActive) {
@@ -144,12 +147,12 @@ class AirSenseClient(private val context: Context, private val scope: CoroutineS
         val message=e.message ?: e.javaClass.simpleName
         if(wanted && saved?.device?.address==selected?.address && e !is RpcRejected && attempts<5) {
             val delayMs=1000L shl attempts++
-            status.value="Reconnecting ($attempts/5) • $message"
+            connecting.value=true;status.value="Reconnecting ($attempts/5) • $message"
             retryJob?.cancel()
             retryJob=scope.launch { delay(delayMs);if(wanted)selected?.let { startConnection(it) } }
         } else {
             wanted=false
-            status.value=if(e is RpcRejected) "Session rejected: $message. Forget pairing to pair again." else "Connection stopped: $message. Tap Reconnect or Scan."
+            status.value=if(e is RpcRejected) "Session rejected: $message. Forget pairing to pair again." else "Connection stopped: $message. Try connecting again."
         }
     }
     fun disconnect() {
@@ -162,7 +165,7 @@ class AirSenseClient(private val context: Context, private val scope: CoroutineS
         val old=gatt;gatt=null
         runCatching { old?.disconnect() };runCatching { old?.close() }
         tx=null;session=null;pairing=null;exchange=null
-        streaming.value=false;needsCode.value=false
+        connecting.value=false;streaming.value=false;needsCode.value=false
     }
     private suspend fun rpc(method:String, params:JSONObject?, encrypted:Boolean):JSONObject {
         val id=++nextId;val pending=CompletableDeferred<JSONObject>();replies[id]=pending
