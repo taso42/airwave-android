@@ -142,3 +142,8 @@ attempt. Frozen charts and cards have an amber outline and pause icon.
 - [TODO](TODO.md): remaining work by priority.
 - [Testing](docs/TESTING.md): repeatable checks and latest verification status.
 - [Development log](docs/DEVELOPMENT_LOG.md): archived investigation and implementation history.
+
+## License
+
+Airwave is licensed under the [MIT License](LICENSE). Third-party material
+retains its respective license; see [Third-party notices](THIRD_PARTY_NOTICES.md).
