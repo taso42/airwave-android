@@ -2,6 +2,8 @@
 
 An Android dashboard for viewing live ResMed AirSense 11 breathing data. The app starts with empty charts and attempts to reconnect when saved pairing and Bluetooth permission are available; simulated data is available through an optional toggle on the Settings screen. The first Android Bluetooth implementation successfully paired and received live data on a physical phone, as reported by Taso on October 16, 2026.
 
+Airwave’s entire codebase was created by OpenAI Codex, with human direction and hands-on device testing. Third-party work is credited separately below.
+
 ## Current features
 
 - Scrolling flow and mask-pressure charts with a shared 30-second, 60-second, 5-minute, 15-minute, or 60-minute window.
