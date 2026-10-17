@@ -9,6 +9,14 @@ class FigProtocolTest {
         assertEquals("ADF98AB49107309E9F46CA1084AA9BF47A8F122A1AA7B4C886D133A811D22B0F",FigProtocol.hex(p.master))
         assertEquals("FAEDDD6A2CCD08FC977C181851F5046BCF97F83E25D62512C09AC2D134C8B894", FigProtocol.hex(p.finish("4089BF9D2E0A12318610394510B86921CFA52729DAABD176931EB2492A139EEF","00112233")))
     }
+    @Test fun publicKeyHasFixedWidthAndLeadingZeroCodeMatchesPython() {
+        val small=FigProtocol.Pairing(BigInteger.ONE)
+        assertEquals(512, small.publicHex.length)
+        assertEquals("00".repeat(255)+"02", small.publicHex)
+        val p=FigProtocol.Pairing(BigInteger("123456789"))
+        assertEquals("037FE0B80B0FB72F11FE18B6D9A1CC6FAB0B7D5BAD996B5B36C54798D4AE0956",
+            p.proof("123456789ABCDEF","00112233445566778899AABBCCDDEEFF","0123"))
+    }
     @Test fun framesSurviveFragmentation() {
         val frame=FigProtocol.frame(0x393,"hello".toByteArray())
         assertEquals("BEBAFECA9303050086A61036A8A8B73568656C6C6F",FigProtocol.hex(frame))
