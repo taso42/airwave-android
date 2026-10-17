@@ -4,6 +4,14 @@ An Android dashboard for viewing live ResMed AirSense 11 breathing data. The app
 
 Airwave’s entire codebase was created by OpenAI Codex, with human direction and hands-on device testing. Third-party work is credited separately below.
 
+## Screenshots
+
+Live data on an Android phone. Select an image to view it at full size.
+
+| 60-second view | 15-minute view | Settings |
+| --- | --- | --- |
+| <a href="docs/screenshots/live-60-seconds.png"><img src="docs/screenshots/live-60-seconds.png" alt="Airwave live readings and breathing charts over 60 seconds" height="420"></a> | <a href="docs/screenshots/live-15-minutes.png"><img src="docs/screenshots/live-15-minutes.png" alt="Airwave live readings and all six charts over 15 minutes" height="420"></a> | <a href="docs/screenshots/settings.png"><img src="docs/screenshots/settings.png" alt="Airwave Settings with Bluetooth connection, background streaming, chart visibility, and simulation controls" height="420"></a> |
+
 ## Current features
 
 - Scrolling flow and mask-pressure charts with a shared 30-second, 60-second, 5-minute, 15-minute, or 60-minute window.
