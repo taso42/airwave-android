@@ -1,6 +1,6 @@
 # Third-party notices
 
-The AirSense FIG/SRP protocol implementation is informed by m-kozlowski/airbreak-plus, revision d77c727a5d38649da2853f3e1bc91a538204171f (python/lib/resmed_fig.py and Air11 protocol documentation).
+The AirSense FIG/SRP protocol implementation is informed by m-kozlowski/airbreak-plus, revision d77c727a5d38649da2853f3e1bc91a538204171f (python/lib/resmed_fig.py, python/lib/as11_spool.py, and Air11 protocol documentation). The offline archive decoder and pagination prototype follow the documented DataDelivery/RC03 format and spool integrity checks.
 
 Copyright 2020, Airbreak.dev contributors
 
