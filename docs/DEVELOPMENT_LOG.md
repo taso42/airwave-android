@@ -1,5 +1,11 @@
 # Development log
 
+## October 17, 2026 — Independent display refresh
+
+Stacked on the sample-store extraction. Packet timestamps/rates and the simulation acquisition clock no longer update Compose state for each arrival/tick. One display frame publishes time, packet freshness, rate, axis end, and therapy pressure every 250 ms alongside chart invalidation. Explicit lifecycle/display resets still publish immediately. Frozen graphs retain their snapshot while live status pressure continues updating. Acquisition cadence and retained samples are unchanged.
+
+Debug build and JVM tests pass. Added an Android regression test for a packet burst remaining invisible to display state until the refresh tick, including pressure updates while frozen. All five ConnectionScreenTest tests passed on the API 37.2 emulator. The first run caught delayed catch-up on resume; resuming now publishes immediately, and the full targeted suite passed on rerun. Physical-device Bluetooth verification and user visual review remain pending.
+
 ## October 17, 2026 — Separate sample ownership from the dashboard
 
 Extracted the normalized Sample model and SampleStore from the ViewModel. The store owns Bluetooth decoding, time origin, bounded retention, and timeline reset detection; the dashboard keeps presentation, freeze, and lifecycle state. Samples document their normalized units and retain device UTC timestamps and Bluetooth device identity or simulation provenance. Decoded updates retain the original start-time string and interval. Existing unit conversions remain provisional.
