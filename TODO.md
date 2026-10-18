@@ -8,7 +8,7 @@ therapy-setting changes, firmware changes, or clinical recommendations.
 
 ## P1 — Next
 
-- [ ] Verify 30–60 minutes of sustained therapy streaming and responsiveness (T11).
+None remaining. T11 sustained-use verification passed (user-reported).
 
 ## P2 — Soon
 

@@ -14,7 +14,7 @@ all later builds. Never record pairing codes or credentials.
 | Background off/on, lock and app switch | T5–T8 passed; simulation background behavior also passed |
 | Foreground notification | T9 passed |
 | Out of range | T10 skipped; P3 |
-| Sustained use | T11 pending; only remaining P1 |
+| Sustained use | T11 passed, user-reported October 17, 2026 |
 | Task dismissal / force-stop | Original T13/T14 passed; procedures below updated for automatic reconnect |
 | Fresh-launch reconnect | User confirmed pass on October 17, 2026 |
 | Pairing | Latest pairing and reconnect succeeded; intermittent rejection remains unexplained |
@@ -43,7 +43,7 @@ Turn simulation off, connect to the powered AirSense, select **60 sec**, and lea
 - [x] **P1 · T8 — App switching, background on:** With background streaming on, connect, use another app for 15 seconds, then return. Expect continued streaming without an intentional pause or reconnection gap.
 - [x] **P1 · T9 — Notification visibility:** Check Airwave's notification permission and channel settings in Android app settings. Enable notifications, toggle background streaming off/on, and start simulation or connect. Expect an ongoing notification in the notification shade; a sound or banner is not required. If permissions/channels are enabled but no notification appears, record it as a failure.
 - [ ] **P3 · T10 — Out-of-range recovery (skipped for now):** While connected with background streaming on, walk away with the phone until the link actually drops. Return within range before retries are exhausted. Expect automatic reconnection without a code and a gap. If retries have stopped, use Connect. Record which path occurred; do not mark automatic recovery verified if only manual Connect worked.
-- [ ] **P1 · T11 — Sustained normal use:** During normal use, stream for 30–60 minutes. Check connection status periodically and confirm charts and Settings remain responsive. Record duration, interruptions, and approximate battery change. Instrumented memory checks are tracked separately at P3.
+- [x] **P1 · T11 — Sustained normal use:** During normal use, stream for 30–60 minutes. Check connection status periodically and confirm charts and Settings remain responsive. Record duration, interruptions, and approximate battery change. Instrumented memory checks are tracked separately at P3. Passed, user-reported October 17, 2026; exact duration and battery change were not supplied.
 
 ### Additional lifecycle checks
 
