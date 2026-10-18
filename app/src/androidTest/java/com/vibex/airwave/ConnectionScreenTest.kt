@@ -6,6 +6,39 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ConnectionScreenTest {
+    @Test fun packetAcquisitionDoesNotPublishUntilDisplayTick() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            var initialNow = 0L
+            scenario.onActivity {
+                val model = ViewModelProvider(it)[AirwaveViewModel::class.java]
+                model.useSimulation(false)
+                initialNow = model.now
+                val revision = model.chartRevision
+                repeat(20) { index ->
+                    model.acceptLiveReading(com.vibex.airwave.ble.LiveReading(
+                        "2026-10-16T00:00:%02d.000Z".format(index), 40,
+                        listOf(.5f), listOf(5f),
+                        mapOf("therapyPressure" to listOf(6f))))
+                }
+                assertEquals(20, model.samples.size)
+                assertEquals(initialNow, model.now)
+                assertEquals(revision, model.chartRevision)
+                assertEquals(0L, model.lastPacket)
+                assertNull(model.liveTherapyPressure)
+                model.frozen = model.samples
+            }
+            Thread.sleep(400)
+            scenario.onActivity {
+                val model = ViewModelProvider(it)[AirwaveViewModel::class.java]
+                assertTrue(model.now > initialNow)
+                assertTrue(model.lastPacket > 0L)
+                assertEquals(6f, model.liveTherapyPressure!!, 0f)
+                assertEquals(20, model.frozen!!.size)
+                model.clearDisplay()
+            }
+        }
+    }
+
     @Test fun disconnectAndPreparingReconnectPreserveSamplesAndAxis() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             var retained = emptyList<Sample>()

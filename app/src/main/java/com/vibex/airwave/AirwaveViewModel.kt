@@ -32,7 +32,7 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
     var samples: List<Sample>
         get() = buffer.toList()
         set(value) { sampleStore.replace(value); chartRevision++ }
-    val liveTherapyPressure: Float? get() { chartRevision; return buffer.lastOrNull()?.therapyPressure }
+    val liveTherapyPressure: Float? get() = displayFrame.therapyPressure
     fun chartSnapshot(): List<ChartPoint> {
         chartRevision // Observe throttled refresh, including outages.
         return chartPoints(frozen ?: buffer, chartEnd - window, chartEnd)
@@ -46,21 +46,30 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
             if (value != null && frozenSamples == null) frozenEnd = chartClock.end(android.os.SystemClock.elapsedRealtime())
             frozenSamples = value
         }
-    val chartEnd: Float get() = if (frozen != null) frozenEnd else chartClock.end(now)
+    val chartEnd: Float get() = if (frozen != null) frozenEnd else displayFrame.chartEnd
     var window by mutableIntStateOf(30)
     var demo by mutableStateOf(false)
-    var sampleRateHz by mutableIntStateOf(25)
-    var lastPacket by mutableLongStateOf(0L)
-    var now by mutableLongStateOf(0L)
-    val client=AirSenseClient(application,scope) { batch ->
-        if (demo) return@AirSenseClient
-        sampleRateHz = if (batch.intervalMs > 0) 1000 / batch.intervalMs else 25
+    private var incomingRateHz = 25
+    private var incomingPacketMs = 0L
+    private var displayFrame by mutableStateOf(DisplayFrame())
+    val sampleRateHz get() = displayFrame.sampleRateHz
+    val lastPacket get() = displayFrame.lastPacketMs
+    val now get() = displayFrame.nowMs
+    private fun refreshDisplay() {
+        val time = android.os.SystemClock.elapsedRealtime()
+        displayFrame = DisplayFrame(time, incomingPacketMs, incomingRateHz,
+            chartClock.end(time), buffer.lastOrNull()?.therapyPressure)
+        chartRevision++
+    }
+    val client=AirSenseClient(application,scope, ::acceptLiveReading)
+    internal fun acceptLiveReading(batch: com.vibex.airwave.ble.LiveReading) {
+        if (demo) return
+        incomingRateHz = if (batch.intervalMs > 0) 1000 / batch.intervalMs else 25
         val update = sampleStore.accept(batch, activeSourceId())
         if (update.timelineReset) { frozen=null;chartClock.clear() }
         val incoming = update.samples
-        lastPacket=android.os.SystemClock.elapsedRealtime()
-        now=lastPacket
-        chartClock.observe(incoming.last().seconds, now)
+        incomingPacketMs=android.os.SystemClock.elapsedRealtime()
+        chartClock.observe(incoming.last().seconds, incomingPacketMs)
     }
     private fun activeSourceId(): String? = client.activeDevice.value?.address
     init {
@@ -70,13 +79,13 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
         }
         scope.launch { while(isActive) {
             delay(40)
-            now=android.os.SystemClock.elapsedRealtime()
+            val acquisitionTime=android.os.SystemClock.elapsedRealtime()
             if (demo) {
-                val incoming = simulationClock?.advance(now, foreground || (keepStreamingInBackground && serviceRunning)).orEmpty().map(::simulated)
+                val incoming = simulationClock?.advance(acquisitionTime, foreground || (keepStreamingInBackground && serviceRunning)).orEmpty().map(::simulated)
                 sampleStore.appendSimulation(incoming)
             }
         } }
-        scope.launch { while (isActive) { delay(250); chartRevision++ } }
+        scope.launch { while (isActive) { delay(DISPLAY_REFRESH_MS); refreshDisplay() } }
     }
     fun setBackgroundStreaming(enabled: Boolean) {
         keepStreamingInBackground = enabled
@@ -105,7 +114,8 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
         if (!keepStreamingInBackground || !serviceRunning) {
             resumeDevice = if (client.streaming.value || client.connecting.value) client.activeDevice.value else null
             client.disconnect()
-            lastPacket = 0
+            incomingPacketMs = 0
+            refreshDisplay()
         } else if (client.scanning.value) client.disconnect()
     }
     fun onForeground() {
@@ -142,14 +152,15 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
         clearDisplay()
         demo = enabled
         if (enabled) {
-            now = android.os.SystemClock.elapsedRealtime()
-            simulationClock = SimulationClock(now)
-            chartClock.reset(60f, now)
+            val startTime = android.os.SystemClock.elapsedRealtime()
+            simulationClock = SimulationClock(startTime)
+            chartClock.reset(60f, startTime)
             samples = (0..1500).map { simulated(it * .04f) }
         }
+        refreshDisplay()
         updateService(false)
     }
-    fun clearDisplay() { chartClock.clear();demo=false;simulationClock=null;stopService();samples=emptyList();frozen=null;lastPacket=0 }
+    fun clearDisplay() { chartClock.clear();demo=false;simulationClock=null;stopService();samples=emptyList();frozen=null;incomingPacketMs=0;refreshDisplay() }
     override fun onCleared() { stopService();client.disconnect();scope.cancel() }
     private fun simulated(t:Float):Sample {
         val breath=sin(t*2f*PI.toFloat()/4.8f)
