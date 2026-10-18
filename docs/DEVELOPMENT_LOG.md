@@ -1,5 +1,11 @@
 # Development log
 
+## October 17, 2026 — Separate sample ownership from the dashboard
+
+Extracted the normalized Sample model and SampleStore from the ViewModel. The store owns Bluetooth decoding, time origin, bounded retention, and timeline reset detection; the dashboard keeps presentation, freeze, and lifecycle state. Samples document their normalized units and retain device UTC timestamps and Bluetooth device identity or simulation provenance. Decoded updates retain the original start-time string and interval. Existing unit conversions remain provisional.
+
+Unit tests cover gaps, timestamps/source identity, clock resets with frozen copies, malformed-packet isolation, and source changes. Debug build and unit tests pass; phone smoke testing remains pending. UI refresh scheduling is unchanged and remains a separate TODO.
+
 ## October 17, 2026 — Documentation reorganization
 
 Remaining work now lives in [TODO](../TODO.md). Repeatable procedures and current

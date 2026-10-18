@@ -5,12 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.compose.runtime.*
 import com.vibex.airwave.ble.AirSenseClient
 import kotlinx.coroutines.*
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.TimeZone
 import kotlin.math.*
 
-internal data class Sample(val seconds: Float, val flow: Float, val pressure: Float, val leak: Float? = null, val respiratoryRate: Float? = null, val tidalVolume: Float? = null, val minuteVentilation: Float? = null, val therapyPressure: Float? = null)
 internal class AirwaveViewModel(application: Application): AndroidViewModel(application) {
     private val preferences = application.getSharedPreferences("settings", 0)
     var keepStreamingInBackground by mutableStateOf(preferences.getBoolean("backgroundStreaming", false))
@@ -29,12 +25,13 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
     private var serviceRunning = false
     private var simulationClock: SimulationClock? = null
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
-    private val buffer = ChartBuffer()
+    private val sampleStore = SampleStore()
+    private val buffer get() = sampleStore.samples
     var chartRevision by mutableIntStateOf(0)
         private set
     var samples: List<Sample>
         get() = buffer.toList()
-        set(value) { buffer.clear(); value.forEach(buffer::append); chartRevision++ }
+        set(value) { sampleStore.replace(value); chartRevision++ }
     val liveTherapyPressure: Float? get() { chartRevision; return buffer.lastOrNull()?.therapyPressure }
     fun chartSnapshot(): List<ChartPoint> {
         chartRevision // Observe throttled refresh, including outages.
@@ -53,22 +50,19 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
     var window by mutableIntStateOf(30)
     var demo by mutableStateOf(false)
     var sampleRateHz by mutableIntStateOf(25)
-    var firstTimestamp:Long?=null
     var lastPacket by mutableLongStateOf(0L)
     var now by mutableLongStateOf(0L)
     val client=AirSenseClient(application,scope) { batch ->
         if (demo) return@AirSenseClient
         sampleRateHz = if (batch.intervalMs > 0) 1000 / batch.intervalMs else 25
-        val (origin, incoming) = decodeSamples(batch, firstTimestamp)
-        firstTimestamp = origin
-        val base = incoming.first().seconds
-        // A restarted device clock must not splice new samples into older timestamps.
-        if(buffer.lastOrNull()?.seconds?.let { base<=it }==true) { samples=emptyList();frozen=null;chartClock.clear() }
-        incoming.forEach(buffer::append)
+        val update = sampleStore.accept(batch, activeSourceId())
+        if (update.timelineReset) { frozen=null;chartClock.clear() }
+        val incoming = update.samples
         lastPacket=android.os.SystemClock.elapsedRealtime()
         now=lastPacket
         chartClock.observe(incoming.last().seconds, now)
     }
+    private fun activeSourceId(): String? = client.activeDevice.value?.address
     init {
         scope.launch {
             kotlinx.coroutines.flow.combine(client.connecting, client.streaming) { connecting, streaming -> connecting || streaming }
@@ -79,7 +73,7 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
             now=android.os.SystemClock.elapsedRealtime()
             if (demo) {
                 val incoming = simulationClock?.advance(now, foreground || (keepStreamingInBackground && serviceRunning)).orEmpty().map(::simulated)
-                incoming.forEach(buffer::append)
+                sampleStore.appendSimulation(incoming)
             }
         } }
         scope.launch { while (isActive) { delay(250); chartRevision++ } }
@@ -155,10 +149,10 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
         }
         updateService(false)
     }
-    fun clearDisplay() { chartClock.clear();demo=false;simulationClock=null;stopService();samples=emptyList();frozen=null;firstTimestamp=null;lastPacket=0 }
+    fun clearDisplay() { chartClock.clear();demo=false;simulationClock=null;stopService();samples=emptyList();frozen=null;lastPacket=0 }
     override fun onCleared() { stopService();client.disconnect();scope.cancel() }
     private fun simulated(t:Float):Sample {
         val breath=sin(t*2f*PI.toFloat()/4.8f)
-        return Sample(t,26f*breath+2f*sin(t*5f),8f+1.5f*tanh(breath*3f), 2f+sin(t/9f), 12.5f, 500f+30f*sin(t/8f), 6.25f, 9.5f)
+        return Sample(t,26f*breath+2f*sin(t*5f),8f+1.5f*tanh(breath*3f), 2f+sin(t/9f), 12.5f, 500f+30f*sin(t/8f), 6.25f, 9.5f, source = SampleSource.Simulation)
     }
 }

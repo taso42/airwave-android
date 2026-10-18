@@ -18,7 +18,6 @@ None remaining. T11 sustained-use verification passed (user-reported).
 - [ ] Verify revised first-device discovery/pairing and switching devices (V5).
 - [ ] Verify metric availability/gaps, therapy-pressure behavior while frozen, amber frozen styling, and persisted chart visibility (V1–V3).
 - [ ] Add therapy time after confirming a source and session semantics; do not label it sleep time.
-- [ ] Finish the timestamped sample/batch model with explicit units, source identity, and separately retained original device timestamps. Monotonic pacing already exists.
 - [ ] Finish decoupling UI refresh from packet arrival; chart render snapshots are already throttled.
 - [ ] Add focused UI interaction tests for window selection and tap-to-freeze/resume.
 - [ ] Check compact screens, landscape, large fonts, contrast, and accessibility (V6).
