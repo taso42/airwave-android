@@ -22,6 +22,7 @@ all later builds. Never record pairing codes or credentials.
 | Appearance | New icon and metric cards approved; amber frozen styling awaits explicit confirmation |
 | Therapy pressure | Mac probe matched steady 5.0; status stays live by design, phone freeze check pending |
 | Chart preferences | Persistence implemented; fresh-launch persistence check pending |
+| Sample model and independent refresh | Combined merged build: user reported things look fine on Pixel 9a, October 17, 2026. General phone smoke check passed; specific outstanding procedures below remain unverified. |
 | Automated checks | Builds/unit tests passed; parser, lifecycle, service and UI tests run during development; see log for scope |
 
 ## Connection and lifecycle procedures
