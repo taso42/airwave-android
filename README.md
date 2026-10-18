@@ -142,6 +142,7 @@ attempt. Frozen charts and cards have an amber outline and pause icon.
 - [GitHub Issues](https://github.com/taso42/airwave-android/issues): authoritative backlog, labeled P2/P3 and by work type.
 - [Testing](docs/TESTING.md): repeatable checks and latest verification status.
 - [Development log](docs/DEVELOPMENT_LOG.md): archived investigation and implementation history.
+- [Therapy time investigation](docs/THERAPY_TIME.md): candidate sources, proposed session semantics, and required device checks for issue #9.
 
 ## License
 
