@@ -1,5 +1,9 @@
 # Development log
 
+## October 17, 2026 — Backlog migration to GitHub Issues
+
+Migrated all 16 remaining TODO entries into issues #4–#19 (nine P2, seven P3), with bug, enhancement, technical, or verification labels. Related acceptance steps stay grouped as issue checklists; test procedures and results remain in Testing. GitHub Issues now owns the backlog; TODO.md was deleted after verifying coverage. Completed history remains here.
+
 ## October 17, 2026 — Independent display refresh
 
 Stacked on the sample-store extraction. Packet timestamps/rates and the simulation acquisition clock no longer update Compose state for each arrival/tick. One display frame publishes time, packet freshness, rate, axis end, and therapy pressure every 250 ms alongside chart invalidation. Explicit lifecycle/display resets still publish immediately. Frozen graphs retain their snapshot while live status pressure continues updating. Acquisition cadence and retained samples are unchanged.
@@ -14,7 +18,7 @@ Unit tests cover gaps, timestamps/source identity, clock resets with frozen copi
 
 ## October 17, 2026 — Documentation reorganization
 
-Remaining work now lives in [TODO](../TODO.md). Repeatable procedures and current
+Remaining work now lives in [GitHub Issues](https://github.com/taso42/airwave-android/issues). Repeatable procedures and current
 verification status live in [Testing](TESTING.md).
 
 The snapshot below preserves the previous mixed task list and investigation

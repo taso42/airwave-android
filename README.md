@@ -45,9 +45,9 @@ The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 - `app/src/main/java/com/vibex/airwave/ui/theme/`: generated starter theme files; the dashboard currently defines its own palette.
 - `app/src/test/` and `app/src/androidTest/`: protocol, sample conversion, chart-clock, simulation, pairing/lifecycle, and service-restart tests.
 - `gradle/libs.versions.toml`: dependency versions.
-- [TODO.md](TODO.md): proposed implementation sequence and acceptance checks.
+- [GitHub Issues](https://github.com/taso42/airwave-android/issues): remaining work and acceptance tasks.
 
-The dashboard has been built, installed, and visually inspected on the emulator; subsequent phone acceptance is tracked in TODO.md.
+The dashboard has been built, installed, and visually inspected on the emulator; phone acceptance results are tracked in [Testing](docs/TESTING.md).
 
 ## Related protocol exploration
 
@@ -76,7 +76,7 @@ The first Bluetooth milestone is pairing on Android and displaying received samp
 
 Pairing credentials for one device are encrypted with an Android Keystore AES-GCM key and stored in the app’s no-backup directory. Reconnect uses the saved client ID and master key to authenticate a fresh session; no pairing code is needed unless the machine rejects the saved credentials. Use Forget device to remove the phone’s saved credentials. Link failures and a ten-second stream stall trigger up to five reconnect attempts with increasing delays (1, 2, 4, 8, 16 seconds). Explicit Disconnect cancels retries. A cold app launch offers Connect rather than silently connecting. Rotation preserves the client and buffer. Optional background streaming uses a foreground service; process termination still requires reconnection. With the option off, leaving pauses the connection and returning resumes it. Device timestamps pace chart positions; the dashboard shows Disconnected after two seconds without packets; connection details remain on the Settings screen. Flow is converted from the expected L/s protocol value to L/min; validate this with therapy data before treating the display as calibrated. No breathing data is recorded.
 
-Validation: debug build and JVM unit tests pass, including Python-reference SRP/framing vectors, AES round-trip, corrupted-frame rejection, and server-proof rejection. Taso reported successful pairing and live data reception on the connected physical phone on October 16, 2026. This validates the initial end-to-end connection; sustained therapy and waveform accuracy remain to be validated. See TODO.md for the subsequently completed radio and lifecycle checks.
+Validation: debug build and JVM unit tests pass, including Python-reference SRP/framing vectors, AES round-trip, corrupted-frame rejection, and server-proof rejection. Taso reported successful pairing and live data reception on the connected physical phone on October 16, 2026. This validates the initial end-to-end connection; sustained therapy testing subsequently passed, while waveform accuracy remains to be validated. See [Testing](docs/TESTING.md) for radio, lifecycle, and sustained-use results.
 
 ## Pairing and lifecycle validation
 
@@ -139,7 +139,7 @@ attempt. Frozen charts and cards have an amber outline and pause icon.
 
 ## Project tracking
 
-- [TODO](TODO.md): remaining work by priority.
+- [GitHub Issues](https://github.com/taso42/airwave-android/issues): authoritative backlog, labeled P2/P3 and by work type.
 - [Testing](docs/TESTING.md): repeatable checks and latest verification status.
 - [Development log](docs/DEVELOPMENT_LOG.md): archived investigation and implementation history.
 

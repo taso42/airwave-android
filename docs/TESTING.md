@@ -1,6 +1,6 @@
 # Testing
 
-Use [TODO](../TODO.md) for priorities and [Development log](DEVELOPMENT_LOG.md)
+Use [GitHub Issues](https://github.com/taso42/airwave-android/issues) for priorities and [Development log](DEVELOPMENT_LOG.md)
 for investigation history. Check a procedure only after its expected result is
 observed. A prior pass is evidence for that build, not a blanket guarantee for
 all later builds. Never record pairing codes or credentials.
