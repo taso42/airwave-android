@@ -6,7 +6,7 @@ import java.text.ParsePosition
 import java.util.Locale
 import java.util.TimeZone
 
-internal fun decodeSamples(batch: LiveReading, origin: Long?): Pair<Long, List<Sample>> {
+internal fun decodeSamples(batch: LiveReading, origin: Long?, source: SampleSource = SampleSource.Bluetooth(null)): Pair<Long, List<Sample>> {
     require(batch.intervalMs > 0) { "Invalid sample interval" }
     require(batch.flow.isNotEmpty() && batch.flow.size == batch.pressure.size) { "Incomplete live sample batch" }
     require(batch.flow.all { it.isFinite() && (it * 60f).isFinite() } && batch.pressure.all { it.isFinite() }) { "Non-finite sample" }
@@ -23,7 +23,7 @@ internal fun decodeSamples(batch: LiveReading, origin: Long?): Pair<Long, List<S
         batch.metrics[name]?.get(index)?.let { it * scale }?.takeIf { it.isFinite() }
     val samples = batch.flow.indices.map { i ->
         Sample(((timestamp - start + i.toLong() * batch.intervalMs) / 1000.0).toFloat(), batch.flow[i] * 60f, batch.pressure[i],
-            metric("leak", i, 60f), metric("rate", i), metric("volume", i, 1000f), metric("ventilation", i), metric("therapyPressure", i))
+            metric("leak", i, 60f), metric("rate", i), metric("volume", i, 1000f), metric("ventilation", i), metric("therapyPressure", i), timestamp + i.toLong() * batch.intervalMs, source)
     }
     return start to samples
 }
