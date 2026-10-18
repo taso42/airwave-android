@@ -26,6 +26,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -170,7 +172,8 @@ private fun Connections(model: AirwaveViewModel, onBack: () -> Unit) {
                     Text("Keep streaming in background")
                     Text("When off, pause when leaving the app and reconnect on return. When on, keep a notification while connected.", style = MaterialTheme.typography.bodySmall)
                 }
-                Switch(checked = model.keepStreamingInBackground, onCheckedChange = {
+                Switch(modifier = Modifier.semantics { contentDescription = "Keep streaming in background" },
+                    checked = model.keepStreamingInBackground, onCheckedChange = {
                     model.setBackgroundStreaming(it)
                     if (it && Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
                 })
@@ -191,8 +194,8 @@ private fun Connections(model: AirwaveViewModel, onBack: () -> Unit) {
         Surface(color = Panel, shape = MaterialTheme.shapes.medium) {
             Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Simulated data")
-                Switch(checked = model.demo, onCheckedChange = { model.useSimulation(it) })
+                Text("Simulated data", Modifier.weight(1f))
+                Switch(modifier = Modifier.semantics { contentDescription = "Simulated data" }, checked = model.demo, onCheckedChange = { model.useSimulation(it) })
             }
         }
     }
@@ -309,21 +312,21 @@ private fun Dashboard(model: AirwaveViewModel, onConnections: () -> Unit) {
                     }
                 }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Reading("Flow", if(displayed.isEmpty()) "—" else "%.1f".format(last.flow), "L/min", Mint, Modifier.weight(1f).clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null)
-            Reading("Mask pressure", if(displayed.isEmpty()) "—" else "%.1f".format(last.pressure), "cmH₂O", Blue, Modifier.weight(1f).clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null)
-        }
+        ReadingPair(
+            first = { modifier -> Reading("Flow", if(displayed.isEmpty()) "—" else "%.1f".format(last.flow), "L/min", Mint, modifier.clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null) },
+            second = { modifier -> Reading("Mask pressure", if(displayed.isEmpty()) "—" else "%.1f".format(last.pressure), "cmH₂O", Blue, modifier.clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null) }
+        )
         val showMetrics = displayed.isNotEmpty() && (model.frozen != null || model.demo || live)
         fun metricText(value: Float?, decimals: Int = 1): String =
             if (!showMetrics || value == null) "—" else "%.${decimals}f".format(value)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Reading("Leak", metricText(last.leak), "L/min", Mint, Modifier.weight(1f).clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null)
-            Reading("Respiratory rate", metricText(last.respiratoryRate), "breaths/min", Blue, Modifier.weight(1f).clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Reading("Tidal volume", metricText(last.tidalVolume, 0), "mL", Mint, Modifier.weight(1f).clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null)
-            Reading("Minute ventilation", metricText(last.minuteVentilation), "L/min", Blue, Modifier.weight(1f).clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null)
-        }
+        ReadingPair(
+            first = { modifier -> Reading("Leak", metricText(last.leak), "L/min", Mint, modifier.clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null) },
+            second = { modifier -> Reading("Respiratory rate", metricText(last.respiratoryRate), "breaths/min", Blue, modifier.clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null) }
+        )
+        ReadingPair(
+            first = { modifier -> Reading("Tidal volume", metricText(last.tidalVolume, 0), "mL", Mint, modifier.clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null) },
+            second = { modifier -> Reading("Minute ventilation", metricText(last.minuteVentilation), "L/min", Blue, modifier.clickable(onClickLabel = tapLabel, onClick = toggleFrozen), model.frozen != null) }
+        )
         Column {
           Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = model.window == 30, onClick = { model.window = 30 }, label = { Text("30 sec") })
@@ -341,9 +344,28 @@ private fun Dashboard(model: AirwaveViewModel, onConnections: () -> Unit) {
         if ("Minute ventilation" in extraCharts) WaveChart("Minute ventilation", "L/min", points, model.window, end, model.frozen != null, 0f, 15f, Blue, toggleFrozen) { it.minuteVentilation }
     }
 }
+/** Keep values readable instead of squeezing two cards at large text sizes. */
+@Composable
+private fun ReadingPair(first: @Composable (Modifier) -> Unit, second: @Composable (Modifier) -> Unit) {
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth / fontScale < 280.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                first(Modifier.fillMaxWidth())
+                second(Modifier.fillMaxWidth())
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                first(Modifier.weight(1f))
+                second(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
 @Composable
 private fun Reading(label: String, value: String, unit: String, tint: Color, modifier: Modifier, frozen: Boolean) {
-    Surface(modifier, color = Panel, shape = MaterialTheme.shapes.medium, border = if (frozen) androidx.compose.foundation.BorderStroke(1.dp, FrozenAmber.copy(alpha = .6f)) else null) {
+    Surface(modifier.semantics { stateDescription = if (frozen) "Frozen" else "Not frozen" }, color = Panel, shape = MaterialTheme.shapes.medium, border = if (frozen) androidx.compose.foundation.BorderStroke(1.dp, FrozenAmber.copy(alpha = .6f)) else null) {
         Column(Modifier.padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
@@ -361,7 +383,7 @@ private fun WaveChart(title: String, unit: String, samples: List<ChartPoint>, wi
     val values = samples.mapNotNull { value(it.sample) }
     val lower = minOf(minimum, kotlin.math.floor(values.minOrNull() ?: minimum))
     val upper = maxOf(maximum, kotlin.math.ceil(values.maxOrNull() ?: maximum))
-    Surface(modifier = Modifier.clickable(onClickLabel = if (frozen) "Resume charts and readings" else "Freeze charts and readings", onClick = onTap), color = Panel, shape = MaterialTheme.shapes.large, border = if (frozen) androidx.compose.foundation.BorderStroke(1.dp, FrozenAmber.copy(alpha = .6f)) else null) {
+    Surface(modifier = Modifier.semantics { stateDescription = if (frozen) "Frozen" else "Not frozen" }.clickable(onClickLabel = if (frozen) "Resume charts and readings" else "Freeze charts and readings", onClick = onTap), color = Panel, shape = MaterialTheme.shapes.large, border = if (frozen) androidx.compose.foundation.BorderStroke(1.dp, FrozenAmber.copy(alpha = .6f)) else null) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text("$title · $unit", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)

@@ -73,3 +73,19 @@ T12 was deliberately removed; do not treat its absence as a pass. Exact metric
 scaling and screen-pressure equivalence require matched reference observations
 (P3), not visual plausibility alone. Record new results here concisely; retain
 investigation narratives in the development log.
+
+### V6 partial verification — 2026-10-17
+
+Issue #11 accessibility branch, emulator API 37.2:
+
+- Debug build and unit tests pass; two Compose accessibility tests pass for named,
+  toggleable Settings switches and the reading's frozen state/resume action.
+- Inspected 320 × 640 dp portrait and 640 × 320 dp landscape at 200% font scale.
+  Readings stack in portrait; values/units remain readable, Settings labels wrap
+  without displacing switches, and charts/time-window controls remain reachable
+  by scrolling. Restored emulator dimensions, density, font scale and rotation.
+- Calculated contrast against the actual dark backgrounds: mint readings 9.29:1,
+  blue readings 7.79:1, chart axis labels 10.34:1, disconnected status 6.47:1.
+  This is a targeted palette check, not a full accessibility certification.
+- V6 remains open for hands-on TalkBack announcement/navigation verification and
+  real-phone large-font review. No Bluetooth or physical-phone testing performed.
