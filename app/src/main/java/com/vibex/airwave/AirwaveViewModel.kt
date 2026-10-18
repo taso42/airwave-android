@@ -45,6 +45,7 @@ internal class AirwaveViewModel(application: Application): AndroidViewModel(appl
         set(value) {
             if (value != null && frozenSamples == null) frozenEnd = chartClock.end(android.os.SystemClock.elapsedRealtime())
             frozenSamples = value
+            if (value == null) refreshDisplay() // Resume immediately at the current time.
         }
     val chartEnd: Float get() = if (frozen != null) frozenEnd else displayFrame.chartEnd
     var window by mutableIntStateOf(30)
